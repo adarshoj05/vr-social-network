@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stereo VR Test</title>
+<style>
+  :root {
+    --bg: #05060a;
+    --fg: #e8e8e8;
+    --accent: #4f9dff;
+    --panel: rgba(20,20,20,0.85);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #05060a; --fg: #e8e8e8; }
+  }
+  :root[data-theme="dark"] { --bg: #05060a; --fg: #e8e8e8; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  canvas { display: block; }
+  #overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: var(--bg); z-index: 10; padding: 24px; text-align: center; color: var(--fg);
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  #overlay h1 { font-size: 1.1rem; font-weight: 600; margin: 0; }
+  #overlay p { font-size: 0.85rem; opacity: 0.75; max-width: 320px; line-height: 1.4; margin: 0; }
+  button {
+    font-family: inherit; font-size: 1rem; padding: 14px 28px; border-radius: 999px;
+    border: none; background: var(--accent); color: #fff; font-weight: 600;
+  }
+  #exitBtn {
+    position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px;
+    z-index: 20; padding: 8px 14px; font-size: 0.8rem; background: var(--panel); display: none;
+  }
+  #ipdRow { display:flex; align-items:center; gap:8px; font-size:0.8rem; color: var(--fg); opacity:0.85; }
+  #ipdRow input { width: 140px; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>Stereo VR Test</h1>
+  <p>Tests split-screen stereo rendering + phone gyro look-around in three.js. Tap start, then slot the phone into your headset (landscape).</p>
+  <div id="ipdRow">
+    <label for="ipd">Eye separation</label>
+    <input id="ipd" type="range" min="40" max="80" value="63">
+    <span id="ipdVal">63mm</span>
+  </div>
+  <button id="startBtn">Start Stereo View</button>
+</div>
+
+<button id="exitBtn">Exit</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
