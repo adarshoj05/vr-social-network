@@ -4,8 +4,23 @@
     if (p) p.textContent = 'three.js failed to load. Check your connection or whether the CDN is blocked, then reload.';
     return;
   }
-  var scene, camera, renderer, stereo;
+  var sensorEl = document.getElementById('sensorStatus');
+  function sensorProbe(e) {
+    if (!sensorEl) return;
+    if (e.alpha === null && e.beta === null && e.gamma === null) {
+      sensorEl.textContent = 'Gyro check: events firing but values are null (no usable sensor, or access blocked).';
+    } else {
+      sensorEl.textContent = 'Gyro check: OK (a=' + Math.round(e.alpha) + ' b=' + Math.round(e.beta) + ' g=' + Math.round(e.gamma) + ')';
+    }
+  }
+  window.addEventListener('deviceorientation', sensorProbe);
+  setTimeout(function () {
+    if (sensorEl && /waiting/.test(sensorEl.textContent)) {
+      sensorEl.textContent = 'Gyro check: no sensor events received. Likely blocked (embedded frame / browser setting) or not supported.';
+    }
+  }, 2500);
   var started = false;
+  var scene, camera, renderer, stereo;
 
   function initScene() {
     scene = new THREE.Scene();
@@ -76,7 +91,7 @@
     );
     deviceQuaternion.setFromEuler(euler);
     deviceQuaternion.multiply(q1);
-    deviceQuaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad(screenOrientation)));
+    deviceQuaternion.multiply(q0.setFromAxisAngle(zee, -THREE.MathUtils.degToRad((screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0))));
     camera.quaternion.copy(deviceQuaternion);
   }
 
