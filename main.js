@@ -115,6 +115,7 @@
 
   function animate() {
     requestAnimationFrame(animate);
+    camera.updateMatrixWorld();
     stereo.update(camera);
     var w = window.innerWidth, h = window.innerHeight;
 
