@@ -31,7 +31,7 @@
 
     stereo = new THREE.StereoCamera();
     stereo.aspect = 0.5;
-    stereo.eyeSep = 0.063;
+    stereo.eyeSep = document.getElementById('ipd').value / 1000;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.1));
     var dir = new THREE.DirectionalLight(0xffffff, 0.6);
