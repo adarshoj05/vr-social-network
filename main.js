@@ -20,7 +20,7 @@
     }
   }, 2500);
   var started = false;
-  var scene, camera, renderer, stereo;
+  var scene, camera, renderer, stereo, rig;
 
   function initScene() {
     scene = new THREE.Scene();
@@ -28,6 +28,9 @@
 
     camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 1.6, 0);
+    rig = new THREE.Object3D();   // body: the controller moves/turns this, the gyro turns the camera inside it
+    rig.add(camera);
+    scene.add(rig);
 
     stereo = new THREE.StereoCamera();
     stereo.aspect = 0.5;
@@ -113,9 +116,93 @@
     window.addEventListener('pointerup', function () { dragging = false; });
   }
 
+  // ---- gamepad: left stick move, right stick snap-turn, A recenter, LB/RB eye separation ----
+  var MOVE_SPEED = 2;             // metres per second
+  var SNAP_ANGLE = Math.PI / 6;   // 30 degrees per right-stick flick
+  var DEADZONE = 0.2;             // ignore small stick drift (cheap pads drift)
+  var lastTime = performance.now();
+  var prevBtn = [], snapReady = true;
+  var fwd = new THREE.Vector3(), rightV = new THREE.Vector3(), upV = new THREE.Vector3(0, 1, 0);
+  var hudL, hudR, hudTimer;
+
+  function makeHud() {
+    function mk(leftPct) {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:12%;left:' + leftPct + '%;transform:translateX(-50%);color:#fff;font:600 14px system-ui,sans-serif;background:rgba(0,0,0,0.55);padding:4px 10px;border-radius:999px;z-index:15;display:none;pointer-events:none;white-space:nowrap';
+      document.body.appendChild(d);
+      return d;
+    }
+    hudL = mk(25); hudR = mk(75);
+  }
+
+  function showHud(text) {
+    hudL.textContent = text; hudR.textContent = text;
+    hudL.style.display = 'block'; hudR.style.display = 'block';
+    clearTimeout(hudTimer);
+    hudTimer = setTimeout(function () { hudL.style.display = 'none'; hudR.style.display = 'none'; }, 1500);
+  }
+
+  function dz(v) { return Math.abs(v) < DEADZONE ? 0 : v; }
+
+  // flat (horizontal) direction the head is facing, written into fwd; false if looking straight up/down
+  function headForward() {
+    camera.getWorldDirection(fwd);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-4) return false;
+    fwd.normalize();
+    return true;
+  }
+
+  function adjustEyeSep(deltaMm) {
+    var mm = Math.round(stereo.eyeSep * 1000) + deltaMm;
+    mm = Math.max(40, Math.min(80, mm));
+    stereo.eyeSep = mm / 1000;
+    showHud('Eye separation ' + mm + 'mm');
+  }
+
+  function updateGamepad(dt) {
+    var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    var gp = null;
+    for (var i = 0; i < pads.length; i++) { if (pads[i]) { gp = pads[i]; break; } }
+    if (!gp) return;
+
+    var lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = gp.axes[2] || 0;
+
+    // move relative to where the head is facing
+    if ((lx || ly) && headForward()) {
+      rightV.crossVectors(fwd, upV);
+      rig.position.addScaledVector(fwd, -ly * MOVE_SPEED * dt);
+      rig.position.addScaledVector(rightV, lx * MOVE_SPEED * dt);
+    }
+
+    // snap turn (comfort-friendly): one step per flick
+    if (Math.abs(rx) > 0.6) {
+      if (snapReady) { rig.rotation.y += (rx > 0 ? -SNAP_ANGLE : SNAP_ANGLE); snapReady = false; }
+    } else if (Math.abs(rx) < 0.3) {
+      snapReady = true;
+    }
+
+    function isDown(idx) { var b = gp.buttons[idx]; return !!b && (b.pressed || b.value > 0.5); }
+    function edge(idx) { var now = isDown(idx), was = !!prevBtn[idx]; prevBtn[idx] = now; return now && !was; }
+
+    if (edge(0)) {            // A: face-forward reset (fixes gyro drift / sets current view as "front")
+      rig.updateMatrixWorld(true);
+      if (headForward()) {
+        rig.rotation.y -= Math.atan2(-fwd.x, -fwd.z);
+        showHud('Recentered');
+      }
+    }
+    if (edge(4)) adjustEyeSep(-1);   // LB
+    if (edge(5)) adjustEyeSep(1);    // RB
+  }
+
   function animate() {
     requestAnimationFrame(animate);
-    camera.updateMatrixWorld();
+    var now = performance.now();
+    var dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+    updateGamepad(dt);
+    rig.updateMatrixWorld(true);
     stereo.update(camera);
     var w = window.innerWidth, h = window.innerHeight;
 
@@ -146,6 +233,7 @@
     if (started) return;
     started = true;
     initScene();
+    makeHud();
     enableDragFallback();
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('exitBtn').style.display = 'block';
