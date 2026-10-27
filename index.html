@@ -41,8 +41,6 @@
     position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px;
     z-index: 20; padding: 8px 14px; font-size: 0.8rem; background: var(--panel); display: none;
   }
-  #ipdRow { display:flex; align-items:center; gap:8px; font-size:0.8rem; color: var(--fg); opacity:0.85; }
-  #ipdRow input { width: 140px; }
 </style>
 </head>
 <body>
@@ -50,12 +48,8 @@
 <div id="overlay">
   <h1>Stereo VR Test</h1>
   <p>Tests split-screen stereo rendering + phone gyro look-around in three.js. Tap start, then slot the phone into your headset (landscape).</p>
-  <div id="ipdRow">
-    <label for="ipd">Eye separation</label>
-    <input id="ipd" type="range" min="40" max="80" value="63">
-    <span id="ipdVal">63mm</span>
-  </div>
   <p id="sensorStatus">Gyro check: waiting for sensor data…</p>
+  <p>Controller: left stick move, right stick turn, Start opens the menu.</p>
   <button id="startBtn">Start Stereo View</button>
 </div>
 
