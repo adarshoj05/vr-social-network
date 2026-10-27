@@ -22,25 +22,7 @@
   var started = false;
   var scene, camera, renderer, stereo, rig;
 
-  function initScene() {
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x05060a);
-
-    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 1.6, 0);
-    rig = new THREE.Object3D();   // body: the controller moves/turns this, the gyro turns the camera inside it
-    rig.add(camera);
-    scene.add(rig);
-
-    stereo = new THREE.StereoCamera();
-    stereo.aspect = 0.5;
-    stereo.eyeSep = document.getElementById('ipd').value / 1000;
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.1));
-    var dir = new THREE.DirectionalLight(0xffffff, 0.6);
-    dir.position.set(2, 4, 3);
-    scene.add(dir);
-
+  function addDemoScene() {
     var grid = new THREE.GridHelper(40, 40, 0x335577, 0x1a2233);
     grid.position.y = -0.1;
     scene.add(grid);
@@ -55,6 +37,27 @@
       box.position.set(Math.sin(angle) * radius, 0.3, -Math.cos(angle) * radius);
       scene.add(box);
     }
+  }
+
+  function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05060a);
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 0);
+    rig = new THREE.Object3D();   // body: the controller moves/turns this, the gyro turns the camera inside it
+    rig.add(camera);
+    scene.add(rig);
+
+    stereo = new THREE.StereoCamera();
+    stereo.aspect = 0.5;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.1));
+    var dir = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir.position.set(2, 4, 3);
+    scene.add(dir);
+
+    addDemoScene();
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -116,7 +119,7 @@
     window.addEventListener('pointerup', function () { dragging = false; });
   }
 
-  // ---- gamepad: left stick move, right stick snap-turn, A recenter, LB/RB eye separation ----
+  // ---- gamepad: left stick move, right stick snap-turn, A recenter ----
   var MOVE_SPEED = 2;             // metres per second
   var SNAP_ANGLE = Math.PI / 6;   // 30 degrees per right-stick flick
   var DEADZONE = 0.2;             // ignore small stick drift (cheap pads drift)
@@ -135,11 +138,12 @@
     hudL = mk(25); hudR = mk(75);
   }
 
-  function showHud(text) {
+  function showHud(text, ms) {
+    if (!hudL) return;
     hudL.textContent = text; hudR.textContent = text;
     hudL.style.display = 'block'; hudR.style.display = 'block';
     clearTimeout(hudTimer);
-    hudTimer = setTimeout(function () { hudL.style.display = 'none'; hudR.style.display = 'none'; }, 1500);
+    hudTimer = setTimeout(function () { hudL.style.display = 'none'; hudR.style.display = 'none'; }, ms || 1500);
   }
 
   function dz(v) { return Math.abs(v) < DEADZONE ? 0 : v; }
@@ -153,11 +157,50 @@
     return true;
   }
 
-  function adjustEyeSep(deltaMm) {
-    var mm = Math.round(stereo.eyeSep * 1000) + deltaMm;
-    mm = Math.max(40, Math.min(80, mm));
-    stereo.eyeSep = mm / 1000;
-    showHud('Eye separation ' + mm + 'mm');
+  // ---- in-headset menu (drawn once per eye, driven by the controller) ----
+  var MENU_ITEMS = ['Resume', 'Recenter view', 'Exit'];
+  var menuOpen = false, menuIndex = 0, menuEls = [];
+  var navYReady = true;
+
+  function makeMenu() {
+    function mk(leftPct) {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:fixed;top:50%;left:' + leftPct + '%;transform:translate(-50%,-50%);width:min(40vw,260px);box-sizing:border-box;color:#fff;font:600 14px system-ui,sans-serif;background:rgba(10,12,18,0.88);padding:12px;border-radius:14px;z-index:16;display:none;pointer-events:none';
+      document.body.appendChild(d);
+      return d;
+    }
+    menuEls = [mk(25), mk(75)];
+  }
+
+  function renderMenu() {
+    var h = '<div style="text-align:center;margin-bottom:8px">Menu</div>';
+    for (var i = 0; i < MENU_ITEMS.length; i++) {
+      var label = MENU_ITEMS[i];
+      var style = (i === menuIndex) ? 'background:#4f9dff;color:#fff' : 'background:rgba(255,255,255,0.10)';
+      h += '<div style="padding:6px 10px;border-radius:8px;margin:3px 0;' + style + '">' + label + '</div>';
+    }
+    h += '<div style="margin-top:8px;font:400 11px system-ui,sans-serif;opacity:0.75;text-align:center">D-pad or left stick: select. A: confirm. B or Start: close.</div>';
+    for (var k = 0; k < menuEls.length; k++) menuEls[k].innerHTML = h;
+  }
+
+  function setMenu(open) {
+    menuOpen = open;
+    menuIndex = 0;
+    if (open) renderMenu();
+    for (var k = 0; k < menuEls.length; k++) menuEls[k].style.display = open ? 'block' : 'none';
+  }
+
+  function exitApp() {
+    if (document.exitFullscreen) document.exitFullscreen();
+    location.reload();
+  }
+
+  function recenter() {
+    rig.updateMatrixWorld(true);
+    if (headForward()) {
+      rig.rotation.y -= Math.atan2(-fwd.x, -fwd.z);
+      showHud('Recentered');
+    }
   }
 
   function updateGamepad(dt) {
@@ -166,34 +209,48 @@
     for (var i = 0; i < pads.length; i++) { if (pads[i]) { gp = pads[i]; break; } }
     if (!gp) return;
 
-    var lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = gp.axes[2] || 0;
-
-    // move relative to where the head is facing
-    if ((lx || ly) && headForward()) {
-      rightV.crossVectors(fwd, upV);
-      rig.position.addScaledVector(fwd, -ly * MOVE_SPEED * dt);
-      rig.position.addScaledVector(rightV, lx * MOVE_SPEED * dt);
-    }
-
-    // snap turn (comfort-friendly): one step per flick
-    if (Math.abs(rx) > 0.6) {
-      if (snapReady) { rig.rotation.y += (rx > 0 ? -SNAP_ANGLE : SNAP_ANGLE); snapReady = false; }
-    } else if (Math.abs(rx) < 0.3) {
-      snapReady = true;
-    }
-
     function isDown(idx) { var b = gp.buttons[idx]; return !!b && (b.pressed || b.value > 0.5); }
     function edge(idx) { var now = isDown(idx), was = !!prevBtn[idx]; prevBtn[idx] = now; return now && !was; }
 
-    if (edge(0)) {            // A: face-forward reset (fixes gyro drift / sets current view as "front")
-      rig.updateMatrixWorld(true);
-      if (headForward()) {
-        rig.rotation.y -= Math.atan2(-fwd.x, -fwd.z);
-        showHud('Recentered');
+    // read every button every frame so the edge detection stays accurate
+    var aPress = edge(0), bPress = edge(1), startPress = edge(9);
+    var dUp = edge(12), dDown = edge(13);
+
+    var lx = dz(gp.axes[0] || 0), ly = dz(gp.axes[1] || 0), rx = gp.axes[2] || 0;
+
+    // left-stick flicks double as menu navigation
+    var navY = 0;
+    if (Math.abs(ly) > 0.6) { if (navYReady) { navY = ly > 0 ? 1 : -1; navYReady = false; } } else if (Math.abs(ly) < 0.3) { navYReady = true; }
+
+    if (startPress) {
+      setMenu(!menuOpen);
+    } else if (menuOpen) {
+      if (bPress) {
+        setMenu(false);
+      } else {
+        var dy = (dDown ? 1 : 0) - (dUp ? 1 : 0) + navY;
+        if (dy) { menuIndex = (menuIndex + (dy > 0 ? 1 : -1) + MENU_ITEMS.length) % MENU_ITEMS.length; renderMenu(); }
+        if (aPress) {
+          if (menuIndex === 0) setMenu(false);
+          else if (menuIndex === 1) { setMenu(false); recenter(); }
+          else if (menuIndex === 2) exitApp();
+        }
       }
+    } else {
+      // move relative to where the head is facing
+      if ((lx || ly) && headForward()) {
+        rightV.crossVectors(fwd, upV);
+        rig.position.addScaledVector(fwd, -ly * MOVE_SPEED * dt);
+        rig.position.addScaledVector(rightV, lx * MOVE_SPEED * dt);
+      }
+      // snap turn (comfort-friendly): one step per flick
+      if (Math.abs(rx) > 0.6) {
+        if (snapReady) { rig.rotation.y += (rx > 0 ? -SNAP_ANGLE : SNAP_ANGLE); snapReady = false; }
+      } else if (Math.abs(rx) < 0.3) {
+        snapReady = true;
+      }
+      if (aPress) recenter();   // A: face-forward reset (fixes gyro drift)
     }
-    if (edge(4)) adjustEyeSep(-1);   // LB
-    if (edge(5)) adjustEyeSep(1);    // RB
   }
 
   function animate() {
@@ -232,8 +289,9 @@
   function start() {
     if (started) return;
     started = true;
-    initScene();
     makeHud();
+    makeMenu();
+    initScene();
     enableDragFallback();
     document.getElementById('overlay').style.display = 'none';
     document.getElementById('exitBtn').style.display = 'block';
@@ -257,10 +315,4 @@
     location.reload();
   });
 
-  var ipdInput = document.getElementById('ipd');
-  var ipdVal = document.getElementById('ipdVal');
-  ipdInput.addEventListener('input', function () {
-    ipdVal.textContent = ipdInput.value + 'mm';
-    if (stereo) stereo.eyeSep = ipdInput.value / 1000;
-  });
 })();
